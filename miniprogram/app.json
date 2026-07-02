@@ -1,0 +1,15 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/room/room",
+    "pages/game/game"
+  ],
+  "window": {
+    "navigationBarTitleText": "Dream Tractor",
+    "navigationBarBackgroundColor": "#101820",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#0f171f"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

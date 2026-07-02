@@ -1,0 +1,42 @@
+<view class="page room">
+  <view class="room-top">
+    <view>
+      <view class="eyebrow">房间号</view>
+      <view class="room-id">{{roomId}}</view>
+    </view>
+    <view class="role-chip">{{isOwner ? '房主' : '玩家'}}</view>
+  </view>
+
+  <view class="round-table">
+    <view class="table-felt">
+      <view class="table-shine"></view>
+      <view class="deck-stack">
+        <view class="deck-card card-a"></view>
+        <view class="deck-card card-b"></view>
+        <view class="deck-card card-c"></view>
+      </view>
+      <view class="table-title">等待开局</view>
+      <view class="table-subtitle">第一局你是庄家，开始后由闲家叫分</view>
+    </view>
+
+    <view class="seat seat-{{index}} {{item.isDealer ? 'dealer' : ''}}" wx:for="{{players}}" wx:key="id">
+      <view class="avatar">{{item.name[0]}}</view>
+      <view class="seat-copy">
+        <view class="seat-name">{{item.name}}</view>
+        <view class="seat-note">{{item.isDealer ? '庄家' : '闲家'}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="rules-panel">
+    <view class="rule-pill">2-10 人</view>
+    <view class="rule-pill">大小王万能</view>
+    <view class="rule-pill">235 吃豹子</view>
+    <view class="rule-pill">蒙牌翻倍</view>
+  </view>
+
+  <view class="demo-actions">
+    <button class="primary-button start-button" bindtap="startDealerDemo">以庄家身份开始演示</button>
+    <button class="ghost-button start-button" bindtap="startIdleDemo">以闲家身份开始演示</button>
+  </view>
+</view>

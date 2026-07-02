@@ -1,0 +1,102 @@
+<view class="page table-page">
+  <view class="hud">
+    <view>
+      <view class="eyebrow">{{isDealerView ? '庄家操作区' : '闲家操作区'}}</view>
+      <view class="phase">{{phaseText}}</view>
+    </view>
+    <view class="dealer-chip">{{isDealerView ? ('余牌 ' + remainingCards) : ('叫酒 ' + myBid + ' 杯')}}</view>
+  </view>
+
+  <view class="status-bar">{{statusText}}</view>
+
+  <view class="poker-table">
+    <view class="felt">
+      <view class="felt-ring"></view>
+      <view class="deck">
+        <view class="deck-layer layer-1">
+          <image class="card-back-image" src="/assets/card-back.png" mode="aspectFill"></image>
+        </view>
+        <view class="deck-layer layer-2">
+          <image class="card-back-image" src="/assets/card-back.png" mode="aspectFill"></image>
+        </view>
+        <view class="deck-layer layer-3">
+          <image class="card-back-image" src="/assets/card-back.png" mode="aspectFill"></image>
+        </view>
+      </view>
+      <view class="public-card">
+        <view class="card-label">公共牌</view>
+        <view class="playing-card face {{publicCard.colorClass}}">
+          <image class="card-face-image" src="{{publicCard.image}}" mode="aspectFit"></image>
+        </view>
+      </view>
+    </view>
+
+    <view
+      class="table-player player-{{index}} {{item.isDealer ? 'is-dealer' : ''}} {{item.opened ? 'opened' : ''}} {{item.canOpen ? 'can-open' : ''}}"
+      wx:for="{{players}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="tapPlayer"
+    >
+      <view class="player-top">
+        <view class="avatar">{{item.initial}}</view>
+        <view class="player-copy">
+          <view class="player-name">{{item.name}}</view>
+          <view class="player-meta">{{item.isDealer ? '庄家' : ('蒙牌 ' + item.bid)}}</view>
+        </view>
+      </view>
+      <view class="player-status {{item.resultClass}}">{{item.statusText}}</view>
+      <view class="playing-card mini back" wx:if="{{item.hidden}}">
+        <image class="card-back-image" src="/assets/card-back.png" mode="aspectFill"></image>
+      </view>
+      <view class="playing-card mini face {{item.card.colorClass}}" wx:else>
+        <image class="card-face-image" src="{{item.card.image}}" mode="aspectFit"></image>
+      </view>
+    </view>
+  </view>
+
+  <view class="hand-dock">
+    <view class="my-card-wrap">
+      <view class="card-label">我的暗牌</view>
+      <view class="playing-card large {{myCardVisible ? 'face' : 'back'}} {{myCard.colorClass}}" bindtap="toggleMyCard">
+        <image wx:if="{{myCardVisible}}" class="card-face-image" src="{{myCard.image}}" mode="aspectFit"></image>
+        <image wx:else class="card-back-image" src="/assets/card-back.png" mode="aspectFill"></image>
+      </view>
+    </view>
+    <view class="hand-info">
+      <view class="eyebrow">{{isDealerView ? '庄家牌型' : '我的牌型'}}</view>
+      <view class="best-hand">{{myCardVisible ? myHand : '点击左侧暗牌查看'}}</view>
+      <view class="combo-text">{{isDealerView ? '单开模式下点击闲家头像即可开牌。' : '不看牌直接准备就是蒙牌；点击暗牌后会显示已看牌。'}}</view>
+    </view>
+  </view>
+
+  <view class="idle-actions" wx:if="{{!isDealerView && idlePhase === 'prepare'}}">
+    <button class="primary-button mode-button" bindtap="idleReady">我已准备好</button>
+  </view>
+
+  <view class="idle-actions" wx:if="{{!isDealerView && idlePhase === 'bid'}}">
+    <button wx:for="{{bidOptions}}" wx:key="*this" class="ghost-button bid" data-value="{{item}}" bindtap="chooseBid">{{item}}杯</button>
+  </view>
+
+  <view class="idle-actions" wx:if="{{!isDealerView && idlePhase === 'waiting'}}">
+    <button class="ghost-button mode-button" bindtap="simulateDealerOpenMe">模拟庄家开我</button>
+    <button class="ghost-button mode-button" bindtap="simulateDealerOpenOther">模拟庄家开别人</button>
+    <button class="primary-button mode-button" bindtap="simulateOpenAll">模拟通开</button>
+  </view>
+
+  <view class="mode-actions" wx:if="{{isDealerView}}">
+    <button class="primary-button mode-button {{operationMode === 'single' ? 'selected' : ''}}" data-mode="single" bindtap="setMode">单开</button>
+    <button class="ghost-button mode-button" bindtap="openAll">通开</button>
+    <button class="ghost-button mode-button" bindtap="selfPenalty">自罚</button>
+  </view>
+
+  <view class="round-actions" wx:if="{{isDealerView}}">
+    <button class="ghost-button end-button" bindtap="endSingleOpen">结束本轮开牌</button>
+    <button class="ghost-button end-button" bindtap="nextRound">洗牌发牌</button>
+  </view>
+
+  <view class="settlement" wx:if="{{openedLogs.length}}">
+    <view class="settle-title">操作时间线</view>
+    <view class="settle-line" wx:for="{{openedLogs}}" wx:key="id">{{item.text}}</view>
+  </view>
+</view>

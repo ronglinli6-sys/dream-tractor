@@ -1,0 +1,44 @@
+{
+    "description":  "Dream Tractor multiplayer card miniprogram prototype",
+    "appid":  "wxdec11c4cea4eb659",
+    "projectname":  "dream-tractor",
+    "miniprogramRoot":  "miniprogram/",
+    "compileType":  "miniprogram",
+    "setting":  {
+                    "es6":  true,
+                    "enhance":  true,
+                    "postcss":  true,
+                    "minified":  true,
+                    "urlCheck":  false,
+                    "coverView":  true,
+                    "lazyloadPlaceholderEnable":  false,
+                    "skylineRenderEnable":  false,
+                    "preloadBackgroundData":  false,
+                    "autoAudits":  false,
+                    "showShadowRootInWxmlPanel":  true,
+                    "compileHotReLoad":  true
+                },
+    "packOptions":  {
+                        "ignore":  [
+                                       {
+                                           "type":  "folder",
+                                           "value":  "node_modules"
+                                       },
+                                       {
+                                           "type":  "folder",
+                                           "value":  "server"
+                                       },
+                                       {
+                                           "type":  "folder",
+                                           "value":  "shared"
+                                       }
+                                   ],
+                        "include":  [
+
+                                    ]
+                    },
+    "editorSetting":  {
+                          "tabIndent":  "insertSpaces",
+                          "tabSize":  2
+                      }
+}

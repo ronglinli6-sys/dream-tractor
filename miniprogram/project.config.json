@@ -1,0 +1,13 @@
+{
+  "description": "Dream Tractor multiplayer card miniprogram prototype",
+  "appid": "touristappid",
+  "projectname": "dream-tractor",
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true
+  }
+}

@@ -1,0 +1,18 @@
+<view class="page home">
+  <view class="brand">梦幻拖拉机</view>
+  <view class="subtitle">一张暗牌，一张公共牌，幻想最强三张牌。</view>
+
+  <view class="panel">
+    <view class="field-label">昵称</view>
+    <input class="input" value="{{playerName}}" bindinput="onNameInput" maxlength="12" />
+
+    <button class="primary-button action" bindtap="createRoom">创建房间</button>
+    <button class="ghost-button action" bindtap="joinRoom">加入演示房间</button>
+  </view>
+
+  <view class="rule-strip">
+    <view>2-10 人</view>
+    <view>庄闲模式</view>
+    <view>大小王万能</view>
+  </view>
+</view>
