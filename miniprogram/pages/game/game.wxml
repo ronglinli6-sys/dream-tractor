@@ -42,7 +42,7 @@
         <view class="avatar">{{item.initial}}</view>
         <view class="player-copy">
           <view class="player-name">{{item.name}}</view>
-          <view class="player-meta">{{item.isDealer ? '庄家' : ('蒙牌 ' + item.bid)}}</view>
+          <view class="player-meta">{{item.metaText}}</view>
         </view>
       </view>
       <view class="player-status {{item.resultClass}}">{{item.statusText}}</view>
@@ -92,7 +92,7 @@
 
   <view class="round-actions" wx:if="{{isDealerView}}">
     <button class="ghost-button end-button" bindtap="endSingleOpen">结束本轮开牌</button>
-    <button class="ghost-button end-button" bindtap="nextRound">洗牌发牌</button>
+    <button class="ghost-button end-button" bindtap="nextRound">继续发牌</button>
   </view>
 
   <view class="settlement" wx:if="{{openedLogs.length}}">

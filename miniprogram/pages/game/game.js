@@ -1,14 +1,27 @@
-const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
+const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 const suits = [
   { id: "S", name: "黑桃", colorClass: "black" },
   { id: "H", name: "红心", colorClass: "red" },
   { id: "D", name: "方块", colorClass: "red" },
   { id: "C", name: "梅花", colorClass: "black" }
 ];
-const rankValue = ranks.reduce((map, rank, index) => {
-  map[rank] = index + 2;
-  return map;
-}, {});
+const rankValue = {
+  A: 1,
+  "2": 2,
+  "3": 3,
+  "4": 4,
+  "5": 5,
+  "6": 6,
+  "7": 7,
+  "8": 8,
+  "9": 9,
+  "10": 10,
+  J: 11,
+  Q: 12,
+  K: 13
+};
+const bidOptions = [1, 2, 3, 5, 8, 10];
+const defaultIdleBid = 3;
 
 Page({
   data: {
@@ -17,11 +30,10 @@ Page({
     statusText: "当前可点击闲家头像进行开牌",
     isDealerView: true,
     idlePhase: "",
-    dealerName: "你",
     operationMode: "single",
     myCardVisible: false,
     myBid: 0,
-    bidOptions: [1, 2, 3, 5, 8, 10],
+    bidOptions,
     deck: [],
     dealerSeat: 0,
     remainingCards: 0,
@@ -32,7 +44,7 @@ Page({
     myHand: "",
     players: [],
     openedLogs: [],
-    sweepCount: 0
+    roundResolved: false
   },
 
   onLoad(query) {
@@ -42,67 +54,89 @@ Page({
 
   newRound(role = this.data.isDealerView ? "dealer" : "idle", options = {}) {
     const isDealerView = role !== "idle";
-    const playerNames = isDealerView
+    const names = isDealerView
       ? ["你", "阿晨", "小林", "老周", "小夏", "阿杰"]
       : ["房主", "你", "小林", "老周", "小夏", "阿杰"];
     let dealerSeat = typeof options.dealerSeat === "number" ? options.dealerSeat : this.data.dealerSeat;
     let deck = options.resetDeck || !this.data.deck.length ? shuffle(createDeck()) : [...this.data.deck];
-    const cardsNeeded = playerNames.length + 1;
+    let previousPlayers = options.resetDeck ? [] : this.data.players;
+    const publicCardNeeded = options.keepPublicCard && this.data.publicCard?.rank ? 0 : 1;
+    const needsNewCard = (index) => {
+      const old = previousPlayers.find((player) => player.id === `p${index + 1}`);
+      return index === dealerSeat || !old || old.opened || !old.card;
+    };
+    let cardsNeeded = publicCardNeeded;
+    names.forEach((_, index) => {
+      if (needsNewCard(index)) {
+        cardsNeeded += 1;
+      }
+    });
 
     if (deck.length < cardsNeeded) {
-      const oldDealer = playerNames[dealerSeat];
-      dealerSeat = (dealerSeat + 1) % playerNames.length;
-      const newDealer = playerNames[dealerSeat];
+      const oldDealer = names[dealerSeat];
+      dealerSeat = (dealerSeat + 1) % names.length;
+      const newDealer = names[dealerSeat];
       wx.showModal({
         title: "牌不够，换庄洗牌",
-        content: `剩余牌只有 ${deck.length} 张，不够给所有人和公共牌发牌。\n${oldDealer} 下庄，指定 ${newDealer} 当庄。`,
+        content: `剩余牌只有 ${deck.length} 张，不够继续发牌。\n${oldDealer} 下庄，指定 ${newDealer} 当庄。`,
         showCancel: false
       });
       deck = shuffle(createDeck());
+      previousPlayers = [];
     }
 
-    const publicCard = deck.pop();
-    const players = playerNames.map((name, index) => {
-      const privateCard = deck.pop();
-      const hand = bestDreamHand(privateCard, publicCard);
+    const publicCard = publicCardNeeded ? deck.pop() : this.data.publicCard;
+    const players = names.map((name, index) => {
+      const old = previousPlayers.find((player) => player.id === `p${index + 1}`);
+      const shouldDeal = index === dealerSeat || !old || old.opened || !old.card;
+      const card = shouldDeal ? deck.pop() : old.card;
+      const looked = shouldDeal ? false : Boolean(old.looked);
+      const blind = !looked;
+      const hand = bestDreamHand(card, publicCard);
+      const isMe = isDealerView ? index === dealerSeat : index === 1;
+      const hidden = index === dealerSeat ? !looked : isMe ? !looked : true;
       return decoratePlayer({
         id: `p${index + 1}`,
         name,
         initial: name.slice(0, 1),
         isDealer: index === dealerSeat,
-        isMe: isDealerView ? index === dealerSeat : index === 1,
-        bid: index === dealerSeat ? "-" : isDealerView ? 3 : 0,
-        blind: index !== dealerSeat,
-        looked: false,
-        card: privateCard,
-        hidden: index !== dealerSeat,
+        isMe,
+        bid: index === dealerSeat ? "-" : defaultIdleBid,
+        blind,
+        looked,
+        card,
+        hidden,
         opened: false,
         result: "",
         hand
       });
     });
-
     const me = players.find((player) => player.isMe) || players[0];
+    const nextBidder = nextSeat(dealerSeat, players.length);
 
     this.setData({
       phase: isDealerView ? "dealerAction" : "idlePrepare",
       phaseText: isDealerView ? "待操作" : "看牌准备",
-      statusText: isDealerView ? `当前庄家：${playerNames[dealerSeat]}，剩余牌 ${deck.length} 张` : `当前庄家：${playerNames[dealerSeat]}，点击底牌查看`,
+      statusText: isDealerView
+        ? `当前庄家：${players[dealerSeat].name}，剩余牌 ${deck.length} 张`
+        : `当前庄家：${players[dealerSeat].name}，不看牌准备即为蒙牌`,
       isDealerView,
       idlePhase: isDealerView ? "" : "prepare",
       operationMode: "single",
-      myCardVisible: false,
-      myBid: 0,
+      myCardVisible: Boolean(me.looked),
+      myBid: me.isDealer ? 0 : Number(me.bid || 0),
       deck,
       dealerSeat,
       remainingCards: deck.length,
       publicCard,
       myCard: me.card,
-      myHand: me.hand,
+      myHand: me.hand.text,
       players,
       openedCount: 0,
       idleCount: players.length - 1,
-      openedLogs: []
+      currentBidderSeat: nextBidder,
+      openedLogs: [],
+      roundResolved: false
     });
   },
 
@@ -113,22 +147,16 @@ Page({
     });
   },
 
-  toggleDealerCard() {
-    this.toggleMyCard();
-  },
-
   toggleMyCard() {
     const nextVisible = !this.data.myCardVisible;
     let players = this.data.players;
     let statusText = this.data.statusText;
-
-    if (!this.data.isDealerView && nextVisible) {
+    if (nextVisible) {
       players = players.map((player) =>
         player.isMe ? decoratePlayer({ ...player, hidden: false, looked: true, blind: false }) : player
       );
-      statusText = "你已看牌，庄家可看到你的状态为已看牌";
+      statusText = this.data.isDealerView ? "庄家已看牌，本轮庄家不再算蒙牌" : "你已看牌，本轮不能再算蒙牌";
     }
-
     this.setData({ myCardVisible: nextVisible, players, statusText });
   },
 
@@ -137,7 +165,7 @@ Page({
       idlePhase: "bid",
       phase: "idleBid",
       phaseText: "轮到你叫酒",
-      statusText: "请选择本轮叫酒数，演示版不启用只升不降"
+      statusText: "从庄家下家开始顺时针叫酒；演示版当前轮到你"
     });
   },
 
@@ -153,42 +181,39 @@ Page({
         const players = this.data.players.map((player) =>
           player.isMe ? decoratePlayer({ ...player, bid: value }) : player
         );
+        const me = players.find((player) => player.isMe);
         this.setData({
           players,
           myBid: value,
           idlePhase: "waiting",
           phase: "idleWaiting",
           phaseText: "等待庄家",
-          statusText: this.data.myCardVisible
-            ? "你已看牌叫酒，等待庄家抉择"
-            : "你未看牌，当前为蒙牌叫酒，等待庄家抉择"
+          statusText: me.blind ? "你未看牌，当前为蒙牌叫酒" : "你已看牌叫酒，等待庄家抉择"
         });
       }
     });
   },
 
   simulateDealerOpenMe() {
-    const dealer = this.data.players.find((player) => player.isDealer);
+    const dealer = this.currentDealer();
     const me = this.data.players.find((player) => player.isMe);
-    if (!dealer || !me) {
+    if (!dealer || !me || me.isDealer) {
       return;
     }
-    const dealerWins = compareHandText(dealer.hand, me.hand) >= 0;
+    const result = settlePair(dealer, me);
     wx.showModal({
-      title: dealerWins ? "你被开牌：你输了" : "你被开牌：你赢了",
-      content: `庄家：${dealer.hand}\n你：${me.hand}\n${dealerWins ? `你喝 ${this.data.myBid || me.bid || 1} 杯` : `庄家喝 ${this.data.myBid || me.bid || 1} 杯`}`,
+      title: result.dealerWins ? "你被开牌：你输了" : "你被开牌：你赢了",
+      content: result.detail,
       showCancel: false
     });
     const players = this.data.players.map((player) =>
-      player.isMe ? decoratePlayer({ ...player, hidden: false, opened: true, result: dealerWins ? "lose" : "win" }) : player
+      player.isMe ? decoratePlayer({ ...player, hidden: false, opened: true, result: result.dealerWins ? "lose" : "win" }) : player
     );
     this.setData({
       players,
       statusText: "你已被庄家开牌，等待本轮结束",
-      openedLogs: [
-        ...this.data.openedLogs,
-        { id: `idle-open-me-${Date.now()}`, text: dealerWins ? "庄家开你：你输了" : "庄家开你：你赢了" }
-      ]
+      openedLogs: [...this.data.openedLogs, { id: `idle-open-me-${Date.now()}`, text: result.summary }],
+      roundResolved: true
     });
   },
 
@@ -197,55 +222,28 @@ Page({
     if (!target) {
       return;
     }
+    const dealer = this.currentDealer();
+    const result = settlePair(dealer, target);
     const players = this.data.players.map((player) =>
-      player.id === target.id ? decoratePlayer({ ...player, hidden: false, opened: true, result: "lose" }) : player
+      player.id === target.id ? decoratePlayer({ ...player, hidden: false, opened: true, result: result.dealerWins ? "lose" : "win" }) : player
     );
     this.setData({
       players,
       statusText: `庄家开了${target.name}，你继续等待`,
-      openedLogs: [
-        ...this.data.openedLogs,
-        { id: `idle-open-other-${Date.now()}`, text: `庄家开${target.name}，${target.name}已开牌` }
-      ]
+      openedLogs: [...this.data.openedLogs, { id: `idle-open-other-${Date.now()}`, text: result.summary }],
+      roundResolved: true
     });
   },
 
   simulateOpenAll() {
-    const dealer = this.data.players.find((player) => player.isDealer);
-    if (!dealer) {
-      return;
-    }
-    const challengers = this.data.players.filter((player) => !player.isDealer);
-    const winners = challengers.filter((player) => compareHandText(dealer.hand, player.hand) < 0);
-    const total = challengers.reduce((sum, player) => sum + Number(player.bid || 1), 0);
-    wx.showModal({
-      title: winners.length ? "庄家通开失败" : "庄家通杀",
-      content: winners.length ? `有 ${winners.length} 位闲家大过庄家，庄家喝 ${total} 杯` : `庄家大过所有闲家，闲家合计喝 ${total} 杯`,
-      showCancel: false
-    });
-    const players = this.data.players.map((player) =>
-      player.isDealer
-        ? player
-        : decoratePlayer({ ...player, hidden: false, opened: true, result: compareHandText(dealer.hand, player.hand) < 0 ? "win" : "lose" })
-    );
-    this.setData({
-      players,
-      idlePhase: "ended",
-      phaseText: "本轮结束",
-      statusText: "通开结算完成，可等待下一轮",
-      openedLogs: [
-        ...this.data.openedLogs,
-        { id: `idle-open-all-${Date.now()}`, text: winners.length ? "通开：庄家失败" : "通开：庄家通杀" }
-      ]
-    });
+    this.openAll();
   },
 
   tapPlayer(event) {
     if (this.data.phase !== "dealerAction" || this.data.operationMode !== "single") {
       return;
     }
-    const targetId = event.currentTarget.dataset.id;
-    const target = this.data.players.find((player) => player.id === targetId);
+    const target = this.data.players.find((player) => player.id === event.currentTarget.dataset.id);
     if (!target || target.isDealer || target.opened) {
       return;
     }
@@ -253,14 +251,8 @@ Page({
   },
 
   openOne(target) {
-    this.setData({ phaseText: "正在对比中", statusText: `正在对比庄家和${target.name}...` });
-
-    const dealer = this.data.players[0];
-    const dealerWins = compareHandText(dealer.hand, target.hand) >= 0;
-    const resultText = dealerWins
-      ? `庄家赢，${target.name} 喝 ${target.bid} 杯`
-      : `${target.name}赢，庄家喝 ${target.bid} 杯`;
-
+    const dealer = this.currentDealer();
+    const result = settlePair(dealer, target);
     const players = this.data.players.map((player) => {
       if (player.id !== target.id) {
         return decoratePlayer(player);
@@ -269,114 +261,87 @@ Page({
         ...player,
         hidden: false,
         opened: true,
-        result: dealerWins ? "lose" : "win"
+        result: result.dealerWins ? "lose" : "win"
       });
     });
     const openedCount = players.filter((player) => !player.isDealer && player.opened).length;
-    const idleCount = players.filter((player) => !player.isDealer).length;
-    const allOpened = openedCount >= idleCount;
-
+    const allOpened = openedCount >= players.length - 1;
     wx.showModal({
-      title: dealerWins ? "庄家开牌获胜" : `${target.name}开牌获胜`,
-      content: `庄家：${dealer.hand}\n${target.name}：${target.hand}\n${resultText}`,
+      title: result.dealerWins ? "庄家开牌获胜" : `${target.name}开牌获胜`,
+      content: result.detail,
       showCancel: false
     });
-
     this.setData({
       players,
       openedCount,
-      idleCount,
       phaseText: allOpened ? "本轮已全部开完" : "待操作",
-      statusText: allOpened ? "所有闲家已开完，可重新发牌" : "开牌完成，可继续点击其他闲家",
-      openedLogs: [
-        ...this.data.openedLogs,
-        {
-          id: `${target.id}-${Date.now()}`,
-          text: `单开${target.name}：${resultText}`
-        }
-      ]
+      statusText: allOpened ? "所有闲家已开完，可继续从剩余牌堆发牌" : "开牌完成，可继续点击其他闲家",
+      openedLogs: [...this.data.openedLogs, { id: `${target.id}-${Date.now()}`, text: result.summary }],
+      roundResolved: true
     });
   },
 
   openAll() {
-    const dealer = this.data.players[0];
-    const challengers = this.data.players.filter((player) => !player.isDealer && !player.opened);
-    if (!challengers.length) {
-      wx.showToast({ title: "已无可通开的闲家", icon: "none" });
-      return;
-    }
-
-    const winners = challengers.filter((player) => compareHandText(dealer.hand, player.hand) < 0);
-    const total = challengers.reduce((sum, player) => sum + Number(player.bid || 0), 0);
-    const dealerSweep = winners.length === 0;
+    const dealer = this.currentDealer();
+    const challengers = this.data.players.filter((player) => !player.isDealer);
+    const results = challengers.map((player) => settlePair(dealer, player));
     const players = this.data.players.map((player) => {
       if (player.isDealer) {
         return decoratePlayer(player);
       }
-      if (player.opened) {
-        return decoratePlayer(player);
-      }
-      const challengerWins = compareHandText(dealer.hand, player.hand) < 0;
+      const result = results.find((item) => item.targetId === player.id);
       return decoratePlayer({
         ...player,
         hidden: false,
         opened: true,
-        result: challengerWins ? "win" : "lose"
+        result: result.dealerWins ? "lose" : "win"
       });
     });
-    const openedCount = players.filter((player) => !player.isDealer && player.opened).length;
-    const idleCount = players.filter((player) => !player.isDealer).length;
-    const message = dealerSweep
-      ? `庄家大于所有未开闲家，通杀成功。闲家合计喝 ${total} 杯`
-      : `有 ${winners.length} 位闲家大于庄家，庄家喝 ${total} 杯`;
-
+    const dealerDrink = results.reduce((sum, item) => sum + (item.dealerWins ? 0 : item.drinks), 0);
+    const idleDrink = results.reduce((sum, item) => sum + (item.dealerWins ? item.drinks : 0), 0);
     wx.showModal({
-      title: dealerSweep ? "通杀成功" : "通开失败",
-      content: `庄家：${dealer.hand}\n${message}`,
+      title: dealerDrink ? "通开结算" : "庄家通杀",
+      content: `逐个结算完成。\n庄家共喝 ${dealerDrink} 杯；闲家合计喝 ${idleDrink} 杯。`,
       showCancel: false
     });
-
     this.setData({
       players,
-      openedCount,
-      idleCount,
+      openedCount: challengers.length,
       phaseText: "本轮已结束",
-      statusText: "通开后本轮结束，可重新发牌",
-      sweepCount: dealerSweep ? this.data.sweepCount + 1 : this.data.sweepCount,
-      openedLogs: [
-        ...this.data.openedLogs,
-        {
-          id: `open-all-${Date.now()}`,
-          text: `通开：${message}`
-        }
-      ]
+      statusText: "通开全体闲家后本轮结束，可继续从剩余牌堆发牌",
+      openedLogs: [...this.data.openedLogs, ...results.map((item) => ({ id: `${item.targetId}-${Date.now()}`, text: item.summary }))],
+      roundResolved: true
     });
   },
 
   selfPenalty() {
+    const nextState = this.buildDealerSelfPenaltyState();
+    if (!nextState) {
+      return;
+    }
     wx.showModal({
       title: "庄家自罚",
-      content: "庄家选择不开，自罚 1 杯，本轮结束。",
+      content: "庄家选择不开，自罚 1 杯。系统已给庄家重发一张暗牌，公共牌不变，闲家未开牌继续保留。",
       showCancel: false
     });
     this.setData({
-      phaseText: "本轮已结束",
-      statusText: "庄家自罚 1 杯，可重新发牌",
-      openedLogs: [
-        ...this.data.openedLogs,
-        {
-          id: `self-${Date.now()}`,
-          text: "自罚：庄家不开，喝 1 杯"
-        }
-      ]
+      ...nextState,
+      openedLogs: [...this.data.openedLogs, { id: `self-${Date.now()}`, text: "自罚：庄家不开，喝 1 杯；庄家换暗牌，公共牌不变" }]
     });
   },
 
   endSingleOpen() {
-    const unopened = this.data.players.filter((player) => !player.isDealer && !player.opened).length;
-    const text = unopened
-      ? `结束单开：剩余 ${unopened} 位闲家未开，视为安全，本轮结束`
-      : "结束单开：所有闲家已开完，本轮结束";
+    const opened = this.data.players.filter((player) => !player.isDealer && player.opened);
+    const unopened = this.data.players.filter((player) => !player.isDealer && !player.opened);
+    if (!opened.length) {
+      wx.showModal({
+        title: "还不能结束",
+        content: "本轮还没有开任何闲家。如果庄家不想开牌，请点“自罚”。",
+        showCancel: false
+      });
+      return;
+    }
+    const text = `结束本轮：已开 ${opened.length} 位已结算；未开 ${unopened.length} 位保留原牌，直到庄家以后开他。`;
     wx.showModal({
       title: "结束本轮开牌",
       content: text,
@@ -384,31 +349,115 @@ Page({
     });
     this.setData({
       phaseText: "本轮已结束",
-      statusText: "本轮已结束，可重新发牌",
-      openedLogs: [
-        ...this.data.openedLogs,
-        {
-          id: `end-${Date.now()}`,
-          text
-        }
-      ]
+      statusText: "未开闲家保留原牌，可继续从剩余牌堆发牌",
+      openedLogs: [...this.data.openedLogs, { id: `end-${Date.now()}`, text }],
+      roundResolved: true
     });
   },
 
   nextRound() {
+    if (!this.data.roundResolved) {
+      wx.showModal({
+        title: "先完成本轮",
+        content: "庄家至少开一家闲家，或者选择自罚后，才能进入下一轮换牌。",
+        showCancel: false
+      });
+      return;
+    }
     this.newRound();
+  },
+
+  currentDealer() {
+    return this.data.players.find((player) => player.isDealer) || this.data.players[0];
+  },
+
+  buildDealerSelfPenaltyState() {
+    let deck = [...this.data.deck];
+    let dealerSeat = this.data.dealerSeat;
+    const currentNames = this.data.players.map((player) => player.name);
+    let publicCard = this.data.publicCard;
+    let previousPlayers = this.data.players;
+    let clearedRetainedCards = false;
+    const cardsNeeded = previousPlayers.reduce((count, player) => {
+      if (player.isDealer || player.opened || !player.card) {
+        return count + 1;
+      }
+      return count;
+    }, 0);
+
+    if (deck.length < cardsNeeded) {
+      const oldDealer = currentNames[dealerSeat];
+      dealerSeat = nextSeat(dealerSeat, currentNames.length);
+      const newDealer = currentNames[dealerSeat];
+      wx.showModal({
+        title: "牌不够，换庄洗牌",
+        content: `剩余牌只有 ${deck.length} 张，不够继续发牌。\n${oldDealer} 下庄，指定 ${newDealer} 当庄，并清空所有保留牌。`,
+        showCancel: false
+      });
+      deck = shuffle(createDeck());
+      publicCard = deck.pop();
+      previousPlayers = [];
+      clearedRetainedCards = true;
+    }
+
+    const players = currentNames.map((name, index) => {
+      const old = previousPlayers.find((player) => player.id === `p${index + 1}`);
+      const isDealer = index === dealerSeat;
+      const needsNewCard = clearedRetainedCards || isDealer || !old?.card || old.opened;
+      const card = needsNewCard ? deck.pop() : old.card;
+      const isMe = this.data.isDealerView ? isDealer : index === 1;
+      const playerLooked = needsNewCard ? false : Boolean(old?.looked);
+      const hidden = isDealer ? true : isMe ? !playerLooked : true;
+      return decoratePlayer({
+        id: `p${index + 1}`,
+        name,
+        initial: name.slice(0, 1),
+        isDealer,
+        isMe,
+        bid: isDealer ? "-" : defaultIdleBid,
+        blind: isDealer ? true : !playerLooked,
+        looked: isDealer ? false : playerLooked,
+        card,
+        hidden,
+        opened: false,
+        result: "",
+        hand: bestDreamHand(card, publicCard)
+      });
+    });
+    const me = players.find((player) => player.isMe) || players[0];
+    return {
+      phase: this.data.isDealerView ? "dealerAction" : "idlePrepare",
+      phaseText: this.data.isDealerView ? "待操作" : "看牌准备",
+      statusText: `庄家已自罚并换暗牌，公共牌不变，剩余牌 ${deck.length} 张`,
+      operationMode: "single",
+      myCardVisible: Boolean(me.looked),
+      myBid: me.isDealer ? 0 : Number(me.bid || 0),
+      deck,
+      dealerSeat,
+      remainingCards: deck.length,
+      publicCard,
+      myCard: me.card,
+      myHand: me.hand.text,
+      players,
+      openedCount: 0,
+      idleCount: players.length - 1,
+      currentBidderSeat: nextSeat(dealerSeat, players.length),
+      roundResolved: false
+    };
   }
 });
 
 function decoratePlayer(player) {
+  const stateText = player.looked ? "看牌" : "蒙牌";
   if (player.isDealer) {
-    return { ...player, canOpen: false, statusText: "庄家", resultClass: "" };
+    return { ...player, canOpen: false, statusText: `庄家${stateText}`, metaText: `庄家 · ${stateText}`, resultClass: "" };
   }
   if (player.opened) {
     return {
       ...player,
       canOpen: false,
       statusText: player.result === "win" ? "赢" : "输",
+      metaText: `闲家 · ${stateText} · ${player.bid}杯`,
       resultClass: player.result === "win" ? "result-win" : "result-lose"
     };
   }
@@ -416,7 +465,26 @@ function decoratePlayer(player) {
     ...player,
     canOpen: true,
     statusText: player.looked ? "已看牌" : "蒙牌",
+    metaText: `闲家 · ${stateText} · ${player.bid}杯`,
     resultClass: player.looked ? "result-seen" : ""
+  };
+}
+
+function settlePair(dealer, target) {
+  const compare = compareDreamHands(dealer.hand, target.hand, dealer.isDealer);
+  const dealerWins = compare >= 0;
+  const baseBid = Number(target.bid || defaultIdleBid);
+  const multiplier = !dealerWins && !dealer.blind && target.blind ? 2 : 1;
+  const drinks = baseBid * multiplier;
+  const summary = dealerWins
+    ? `开${target.name}：庄家赢，${target.name}喝 ${drinks} 杯`
+    : `开${target.name}：${target.name}赢，庄家喝 ${drinks} 杯${multiplier === 2 ? "（闲家蒙牌翻倍）" : ""}`;
+  return {
+    targetId: target.id,
+    dealerWins,
+    drinks,
+    summary,
+    detail: `庄家：${dealer.hand.text}\n${target.name}：${target.hand.text}\n${summary}`
   };
 }
 
@@ -445,9 +513,7 @@ function shuffle(items) {
   const result = items.slice();
   for (let index = result.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
-    const item = result[index];
-    result[index] = result[swapIndex];
-    result[swapIndex] = item;
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
   }
   return result;
 }
@@ -461,77 +527,112 @@ function cardText(card) {
 
 function bestDreamHand(privateCard, publicCard) {
   const candidates = [];
-  const normals = createDeck().filter((card) => !card.joker);
-  for (const fantasy of normals) {
-    candidates.push(evaluate([normalize(privateCard), normalize(publicCard), fantasy]));
+  for (const first of expandWild(privateCard)) {
+    for (const second of expandWild(publicCard)) {
+      for (const fantasy of allNormalCards()) {
+        candidates.push(evaluate([first, second, fantasy], privateCard.joker || publicCard.joker));
+      }
+    }
   }
-  candidates.sort(compareHands);
-  return candidates[candidates.length - 1].text;
+  candidates.sort(compareBaseHands);
+  return candidates[candidates.length - 1];
 }
 
-function normalize(card) {
-  if (!card.joker) {
-    return card;
-  }
-  return {
-    suit: "S",
-    suitName: "黑桃",
-    rank: "A",
-    colorClass: "black",
-    image: "/assets/cards/A_S.png",
-    joker: false
-  };
+function expandWild(card) {
+  return card.joker ? allNormalCards() : [card];
 }
 
-function evaluate(cards) {
+function allNormalCards() {
+  const cards = [];
+  for (const suit of suits) {
+    for (const rank of ranks) {
+      cards.push({
+        suit: suit.id,
+        suitName: suit.name,
+        rank,
+        colorClass: suit.colorClass,
+        image: `/assets/cards/${rank}_${suit.id}.png`,
+        joker: false
+      });
+    }
+  }
+  return cards;
+}
+
+function evaluate(cards, hasWildcardSource = false) {
   const sorted = cards.slice().sort((a, b) => rankValue[b.rank] - rankValue[a.rank]);
   const values = sorted.map((card) => rankValue[card.rank]);
-  const sameRank = new Set(sorted.map((card) => card.rank)).size === 1;
-  const sameSuit = new Set(sorted.map((card) => card.suit)).size === 1;
-  const straight = values[0] - values[1] === 1 && values[1] - values[2] === 1;
-  const special235 = values.slice().sort((a, b) => a - b).join(",") === "2,3,5";
+  const rankSet = new Set(sorted.map((card) => card.rank));
+  const suitSet = new Set(sorted.map((card) => card.suit));
+  const isTriple = rankSet.size === 1;
+  const isFlush = suitSet.size === 1;
+  const straightValues = getStraightValues(values);
+  const isStraight = Boolean(straightValues);
+  const is235 = !hasWildcardSource && values.slice().sort((a, b) => a - b).join(",") === "2,3,5";
 
   let type = 1;
   let name = "单张";
-  if (special235) {
-    type = 6;
-    name = "235吃豹子";
-  } else if (sameRank) {
+  if (isTriple) {
     type = 5;
     name = "豹子";
-  } else if (straight && sameSuit) {
+  } else if (isStraight && isFlush) {
     type = 4;
     name = "同花顺";
-  } else if (straight) {
+  } else if (isStraight) {
     type = 3;
-    name = "拖拉机";
-  } else if (sameSuit) {
+    name = "顺子";
+  } else if (isFlush) {
     type = 2;
     name = "同花";
   }
 
   return {
     type,
-    values,
+    name,
+    is235,
+    values: straightValues || values,
     text: `${name}：${sorted.map(cardText).join("、")}`
   };
 }
 
-function compareHands(a, b) {
+function getStraightValues(values) {
+  const ascending = values.slice().sort((a, b) => a - b);
+  const key = ascending.join(",");
+  if (key === "1,12,13") {
+    return [14, 13, 12];
+  }
+  if (key === "1,2,3") {
+    return [3, 2, 1];
+  }
+  if (ascending[1] - ascending[0] === 1 && ascending[2] - ascending[1] === 1) {
+    return ascending.slice().reverse();
+  }
+  return null;
+}
+
+function compareBaseHands(a, b) {
   if (a.type !== b.type) {
     return a.type - b.type;
   }
   for (let index = 0; index < a.values.length; index += 1) {
-    if (a.values[index] !== b.values[index]) {
-      return a.values[index] - b.values[index];
+    const diff = (a.values[index] || 0) - (b.values[index] || 0);
+    if (diff) {
+      return diff;
     }
   }
   return 0;
 }
 
-function compareHandText(a, b) {
-  const power = ["单张", "同花", "拖拉机", "同花顺", "豹子", "235吃豹子"];
-  const aPower = power.findIndex((name) => a.indexOf(name) === 0);
-  const bPower = power.findIndex((name) => b.indexOf(name) === 0);
-  return aPower - bPower;
+function compareDreamHands(dealerHand, targetHand) {
+  if (dealerHand.type === 5 && targetHand.is235) {
+    return -1;
+  }
+  if (dealerHand.is235 && targetHand.type === 5) {
+    return 1;
+  }
+  return compareBaseHands(dealerHand, targetHand);
+}
+
+function nextSeat(seat, count) {
+  return (seat + 1) % count;
 }
