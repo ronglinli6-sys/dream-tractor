@@ -11,6 +11,7 @@
 
   <view class="poker-table">
     <view class="felt">
+      <image class="felt-image" src="/assets/ui/poker-table-felt.jpg" mode="aspectFill"></image>
       <view class="felt-ring"></view>
       <view class="deck">
         <view class="deck-layer layer-1">
@@ -74,8 +75,20 @@
     <button class="primary-button mode-button" bindtap="idleReady">我已准备好</button>
   </view>
 
-  <view class="idle-actions" wx:if="{{!isDealerView && idlePhase === 'bid'}}">
-    <button wx:for="{{bidOptions}}" wx:key="*this" class="ghost-button bid" data-value="{{item}}" bindtap="chooseBid">{{item}}杯</button>
+  <view class="idle-actions bid-actions" wx:if="{{!isDealerView && idlePhase === 'bid'}}">
+    <view class="bid-grid">
+      <button wx:for="{{bidOptions}}" wx:key="*this" class="ghost-button bid icon-button" data-value="{{item}}" bindtap="chooseBid">
+        <image class="button-icon" src="/assets/ui/icon-chip-red.png" mode="aspectFit"></image>
+        <text>{{item}}杯</text>
+      </button>
+    </view>
+    <view class="custom-bid">
+      <input class="bid-input" type="number" placeholder="自定义1-20杯" value="{{customBid}}" bindinput="onCustomBidInput" />
+      <button class="primary-button custom-bid-button icon-button" bindtap="chooseCustomBid">
+        <image class="button-icon" src="/assets/ui/icon-chip-gold.png" mode="aspectFit"></image>
+        <text>确认</text>
+      </button>
+    </view>
   </view>
 
   <view class="idle-actions" wx:if="{{!isDealerView && idlePhase === 'waiting'}}">
@@ -96,7 +109,10 @@
   </view>
 
   <view class="settlement" wx:if="{{openedLogs.length}}">
-    <view class="settle-title">操作时间线</view>
+    <view class="settle-title icon-title">
+      <image class="title-icon" src="/assets/ui/icon-glass.png" mode="aspectFit"></image>
+      <text>操作时间线</text>
+    </view>
     <view class="settle-line" wx:for="{{openedLogs}}" wx:key="id">{{item.text}}</view>
   </view>
 </view>

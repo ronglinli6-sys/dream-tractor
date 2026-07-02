@@ -1,13 +1,28 @@
 <view class="page home">
   <view class="brand">梦幻拖拉机</view>
   <view class="subtitle">一张暗牌，一张公共牌，幻想最强三张牌。</view>
+  <image class="home-banner" src="/assets/ui/deal-banner.jpg" mode="aspectFill"></image>
 
   <view class="panel">
     <view class="field-label">昵称</view>
-    <input class="input" value="{{playerName}}" bindinput="onNameInput" maxlength="12" />
+    <input class="input" value="{{playerName}}" bindinput="onNameInput" maxlength="12" placeholder="请输入你的名字" />
+    <view class="field-label">联机服务地址</view>
+    <input class="input" value="{{serverUrl}}" bindinput="onServerUrlInput" placeholder="ws://电脑IP:8787" />
 
+    <view class="section-title">创建房间</view>
+    <view class="field-label">游戏人数（含庄家）</view>
+    <input class="input" type="number" value="{{playerCount}}" bindinput="onPlayerCountInput" maxlength="2" />
+    <view class="field-label">4位数字房间配对码</view>
+    <input class="input code-input" type="number" value="{{createCode}}" bindinput="onCreateCodeInput" maxlength="4" placeholder="例如 2580" />
     <button class="primary-button action" bindtap="createRoom">创建房间</button>
-    <button class="ghost-button action" bindtap="joinRoom">加入演示房间</button>
+
+    <view class="divider"></view>
+    <view class="section-title">加入房间</view>
+    <view class="field-label">游戏人数（与房主一致）</view>
+    <input class="input" type="number" value="{{playerCount}}" bindinput="onPlayerCountInput" maxlength="2" />
+    <view class="field-label">输入房间配对码</view>
+    <input class="input code-input" type="number" value="{{joinCode}}" bindinput="onJoinCodeInput" maxlength="4" placeholder="4位数字" />
+    <button class="ghost-button action" bindtap="joinRoom">加入房间</button>
   </view>
 
   <view class="rule-strip">

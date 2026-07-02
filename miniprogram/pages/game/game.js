@@ -6,7 +6,7 @@ const suits = [
   { id: "C", name: "梅花", colorClass: "black" }
 ];
 const rankValue = {
-  A: 1,
+  A: 14,
   "2": 2,
   "3": 3,
   "4": 4,
@@ -22,6 +22,7 @@ const rankValue = {
 };
 const bidOptions = [1, 2, 3, 5, 8, 10];
 const defaultIdleBid = 3;
+const app = getApp();
 
 Page({
   data: {
@@ -33,6 +34,7 @@ Page({
     operationMode: "single",
     myCardVisible: false,
     myBid: 0,
+    customBid: "",
     bidOptions,
     deck: [],
     dealerSeat: 0,
@@ -54,9 +56,7 @@ Page({
 
   newRound(role = this.data.isDealerView ? "dealer" : "idle", options = {}) {
     const isDealerView = role !== "idle";
-    const names = isDealerView
-      ? ["你", "阿晨", "小林", "老周", "小夏", "阿杰"]
-      : ["房主", "你", "小林", "老周", "小夏", "阿杰"];
+    const names = getRoomPlayerNames(isDealerView);
     let dealerSeat = typeof options.dealerSeat === "number" ? options.dealerSeat : this.data.dealerSeat;
     let deck = options.resetDeck || !this.data.deck.length ? shuffle(createDeck()) : [...this.data.deck];
     let previousPlayers = options.resetDeck ? [] : this.data.players;
@@ -171,9 +171,28 @@ Page({
 
   chooseBid(event) {
     const value = Number(event.currentTarget.dataset.value);
+    this.confirmBid(value);
+  },
+
+  onCustomBidInput(event) {
+    this.setData({ customBid: event.detail.value });
+  },
+
+  chooseCustomBid() {
+    const value = Number(this.data.customBid);
+    if (!Number.isInteger(value) || value < 1 || value > 20) {
+      wx.showToast({ title: "请输入1-20杯", icon: "none" });
+      return;
+    }
+    this.confirmBid(value);
+  },
+
+  confirmBid(value) {
+    const me = this.data.players.find((player) => player.isMe);
+    const riskText = me?.blind ? `蒙牌${value}杯，赢庄家按${value * 2}杯` : `看牌${value}杯`;
     wx.showModal({
       title: "确认叫酒",
-      content: `确定叫 ${value} 杯吗？`,
+      content: `确定叫 ${value} 杯吗？\n${riskText}`,
       success: (result) => {
         if (!result.confirm) {
           return;
@@ -188,7 +207,8 @@ Page({
           idlePhase: "waiting",
           phase: "idleWaiting",
           phaseText: "等待庄家",
-          statusText: me.blind ? "你未看牌，当前为蒙牌叫酒" : "你已看牌叫酒，等待庄家抉择"
+          customBid: "",
+          statusText: me.blind ? `你未看牌，蒙牌${value}杯，赢庄家按${value * 2}杯` : `你已看牌叫酒 ${value} 杯，等待庄家抉择`
         });
       }
     });
@@ -529,6 +549,9 @@ function cardText(card) {
 }
 
 function bestDreamHand(privateCard, publicCard) {
+  if (privateCard.joker) {
+    return bestJokerBomb(privateCard, publicCard);
+  }
   const candidates = [];
   for (const first of expandWild(privateCard)) {
     for (const second of expandWild(publicCard)) {
@@ -539,6 +562,29 @@ function bestDreamHand(privateCard, publicCard) {
   }
   candidates.sort(compareBaseHands);
   return candidates[candidates.length - 1];
+}
+
+function bestJokerBomb(privateCard, publicCard) {
+  const anchorCard = publicCard.joker ? makeNormalCard("A", "S") : publicCard;
+  const bombCards = ["S", "H", "D"].map((suitId) => makeNormalCard(anchorCard.rank, suitId));
+  const hand = evaluate(bombCards, privateCard, publicCard);
+  return {
+    ...hand,
+    name: "王炸弹",
+    text: `王炸弹：${privateCard.rank}按${anchorCard.rank}炸弹算`
+  };
+}
+
+function makeNormalCard(rank, suitId) {
+  const suit = suits.find((item) => item.id === suitId) || suits[0];
+  return {
+    suit: suit.id,
+    suitName: suit.name,
+    rank,
+    colorClass: suit.colorClass,
+    image: `/assets/cards/${rank}_${suit.id}.png`,
+    joker: false
+  };
 }
 
 function expandWild(card) {
@@ -567,6 +613,7 @@ function evaluate(cards, privateCard = null, publicCard = null) {
   const values = sorted.map((card) => rankValue[card.rank]);
   const rankSet = new Set(sorted.map((card) => card.rank));
   const suitSet = new Set(sorted.map((card) => card.suit));
+  const hasWildcardSource = Boolean(privateCard?.joker || publicCard?.joker);
   const isTriple = rankSet.size === 1;
   const isFlush = suitSet.size === 1;
   const straightValues = getStraightValues(values);
@@ -593,6 +640,7 @@ function evaluate(cards, privateCard = null, publicCard = null) {
     type,
     name,
     canUse235AgainstTriple,
+    wildTriple: isTriple && hasWildcardSource,
     values: straightValues || values,
     text: `${name}：${sorted.map(cardText).join("、")}`
   };
@@ -609,10 +657,10 @@ function canMake235AgainstTriple(privateCard, publicCard) {
 function getStraightValues(values) {
   const ascending = values.slice().sort((a, b) => a - b);
   const key = ascending.join(",");
-  if (key === "1,12,13") {
+  if (key === "12,13,14") {
     return [14, 13, 12];
   }
-  if (key === "1,2,3") {
+  if (key === "2,3,14") {
     return [3, 2, 1];
   }
   if (ascending[1] - ascending[0] === 1 && ascending[2] - ascending[1] === 1) {
@@ -624,6 +672,9 @@ function getStraightValues(values) {
 function compareBaseHands(a, b) {
   if (a.type !== b.type) {
     return a.type - b.type;
+  }
+  if (a.type === 5 && Boolean(a.wildTriple) !== Boolean(b.wildTriple)) {
+    return a.wildTriple ? -1 : 1;
   }
   for (let index = 0; index < a.values.length; index += 1) {
     const diff = (a.values[index] || 0) - (b.values[index] || 0);
@@ -654,4 +705,16 @@ function get235SpecialWinner(dealerHand, targetHand) {
 
 function nextSeat(seat, count) {
   return (seat + 1) % count;
+}
+
+function getRoomPlayerNames(isDealerView) {
+  const roomPlayers = Array.isArray(app.globalData.roomPlayers) ? app.globalData.roomPlayers : [];
+  if (roomPlayers.length) {
+    return roomPlayers.map((player) => (player.isMe ? "你" : player.name));
+  }
+  const count = Math.min(10, Math.max(2, Number(app.globalData.playerCount || 6)));
+  const fallback = isDealerView
+    ? ["你", "阿晨", "小林", "老周", "小夏", "阿杰", "阿宁", "小吴", "老陈", "阿舟"]
+    : ["房主", "你", "小林", "老周", "小夏", "阿杰", "阿宁", "小吴", "老陈", "阿舟"];
+  return fallback.slice(0, count);
 }
