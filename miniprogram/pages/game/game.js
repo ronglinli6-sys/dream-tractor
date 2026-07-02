@@ -476,9 +476,12 @@ function settlePair(dealer, target) {
   const baseBid = Number(target.bid || defaultIdleBid);
   const multiplier = !dealerWins && !dealer.blind && target.blind ? 2 : 1;
   const drinks = baseBid * multiplier;
+  const special235Text = get235SpecialWinner(dealer.hand, target.hand)
+    ? "（2和5补3，235吃豹子）"
+    : "";
   const summary = dealerWins
-    ? `开${target.name}：庄家赢，${target.name}喝 ${drinks} 杯`
-    : `开${target.name}：${target.name}赢，庄家喝 ${drinks} 杯${multiplier === 2 ? "（闲家蒙牌翻倍）" : ""}`;
+    ? `开${target.name}：庄家赢${special235Text}，${target.name}喝 ${drinks} 杯`
+    : `开${target.name}：${target.name}赢${special235Text}，庄家喝 ${drinks} 杯${multiplier === 2 ? "（闲家蒙牌翻倍）" : ""}`;
   return {
     targetId: target.id,
     dealerWins,
@@ -530,7 +533,7 @@ function bestDreamHand(privateCard, publicCard) {
   for (const first of expandWild(privateCard)) {
     for (const second of expandWild(publicCard)) {
       for (const fantasy of allNormalCards()) {
-        candidates.push(evaluate([first, second, fantasy], privateCard.joker || publicCard.joker));
+        candidates.push(evaluate([first, second, fantasy], privateCard, publicCard));
       }
     }
   }
@@ -559,7 +562,7 @@ function allNormalCards() {
   return cards;
 }
 
-function evaluate(cards, hasWildcardSource = false) {
+function evaluate(cards, privateCard = null, publicCard = null) {
   const sorted = cards.slice().sort((a, b) => rankValue[b.rank] - rankValue[a.rank]);
   const values = sorted.map((card) => rankValue[card.rank]);
   const rankSet = new Set(sorted.map((card) => card.rank));
@@ -568,7 +571,7 @@ function evaluate(cards, hasWildcardSource = false) {
   const isFlush = suitSet.size === 1;
   const straightValues = getStraightValues(values);
   const isStraight = Boolean(straightValues);
-  const is235 = !hasWildcardSource && values.slice().sort((a, b) => a - b).join(",") === "2,3,5";
+  const canUse235AgainstTriple = canMake235AgainstTriple(privateCard, publicCard);
 
   let type = 1;
   let name = "单张";
@@ -589,10 +592,18 @@ function evaluate(cards, hasWildcardSource = false) {
   return {
     type,
     name,
-    is235,
+    canUse235AgainstTriple,
     values: straightValues || values,
     text: `${name}：${sorted.map(cardText).join("、")}`
   };
+}
+
+function canMake235AgainstTriple(privateCard, publicCard) {
+  if (!privateCard || !publicCard || privateCard.joker || publicCard.joker) {
+    return false;
+  }
+  const realRanks = [privateCard.rank, publicCard.rank].sort().join(",");
+  return realRanks === "2,5";
 }
 
 function getStraightValues(values) {
@@ -624,13 +635,21 @@ function compareBaseHands(a, b) {
 }
 
 function compareDreamHands(dealerHand, targetHand) {
-  if (dealerHand.type === 5 && targetHand.is235) {
-    return -1;
-  }
-  if (dealerHand.is235 && targetHand.type === 5) {
-    return 1;
+  const specialWinner = get235SpecialWinner(dealerHand, targetHand);
+  if (specialWinner) {
+    return specialWinner === "dealer" ? 1 : -1;
   }
   return compareBaseHands(dealerHand, targetHand);
+}
+
+function get235SpecialWinner(dealerHand, targetHand) {
+  if (dealerHand.type === 5 && targetHand.canUse235AgainstTriple) {
+    return "target";
+  }
+  if (dealerHand.canUse235AgainstTriple && targetHand.type === 5) {
+    return "dealer";
+  }
+  return "";
 }
 
 function nextSeat(seat, count) {
